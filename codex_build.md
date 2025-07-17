@@ -1,144 +1,209 @@
 # === CODEX BUILD SCRIPT ===
-# Project: triage_ai
-# Goal: Build a robust AI-powered KTAS triage system
-# Inputs provided:
-#   • data/triage_data.csv.csv   ← tabular training data
-#   • docs/triage.pdf           ← clinical/scientific reference
 
-############################################################
-## SECTION A · Repository skeleton
-############################################################
-1. Create this directory tree:
+## Project: triage\_ai
 
-   triage_ai/
-   ├─ manage.py
-   ├─ requirements.txt
-   ├─ Dockerfile
-   ├─ docker-compose.yml
-   ├─ data/triage_data.csv.csv
-   ├─ docs/triage.pdf
-   ├─ triage_ai/          ← Django project settings
-   └─ triage_ml/          ← Django app & ML logic
-       ├─ ml_pipeline/
-       │   ├─ preprocess.py
-       │   ├─ train_model.py
-       │   └─ artifacts/
-       ├─ utils.py
-       ├─ models.py
-       ├─ serializers.py
-       ├─ views.py
-       ├─ urls.py
-       ├─ admin.py
-       ├─ tests/
-       └─ migrations/
+## Goal:
 
-############################################################
-## SECTION B · Python dependencies
-############################################################
-2. Populate **requirements.txt**:
+Build a complete KTAS-based AI triage system using Django and DRF, integrated with TalkBot NLP API for conversational patient interaction.
 
-   Django==5.0
-   djangorestframework==3.15
-   drf-yasg==2.2.0
-   scikit-learn==1.5
-   pandas==2.2
-   numpy
-   joblib
-   scipy
+### Inputs provided:
 
-############################################################
-## SECTION C · ML training pipeline
-############################################################
-3. In **triage_ml/ml_pipeline/train_model.py**:
+* `data/triage_data.csv.csv` (Model training data)
+* `docs/triage.pdf` (Clinical guideline reference)
 
-   a) Load data/triage_data.csv.csv
-   b) Use preprocess.py to:
-      • Convert NRS_pain → Pain_severity (mild/moderate/severe)
-      • Add pain_central_severe (boolean: pain severe & central)
-   c) Use StandardScaler for numeric, OneHotEncoder for categoric
-   d) Model: RandomForestClassifier (n_estimators=300, class_weight='balanced_subsample')
-   e) Evaluate on holdout test (20%, stratified by KTAS_expert):
-      • Print accuracy, weighted κ (quadratic), Pearson r
-   f) Save the fitted pipeline as artifacts/model.pkl
+## Repository Setup:
 
-############################################################
-## SECTION D · API contract
-############################################################
-4. Expose one endpoint via DRF:
+Create the following exact directory structure:
 
-   POST /api/triage/predict/
-   ------------------------------------
-   Request (JSON):
-     {
-       "pid": "optional string",
-       "Age": 71,
-       "Sex": "Male|Female",
-       "SBP": 160,
-       "DBP": 100,
-       "HR": 84,
-       "RR": 18,
-       "BT": 37.4,
-       "SpO2": 98,
-       "NRS_pain": 8,
-       "Pain_axis": "central|peripheral",
-       "Chief_complain": "free text ≤120 chars",
-       "Arrival_mode": "string",
-       "KTAS_expert": 3      # optional ground-truth label
-     }
+```
+triage_ai/
+├─ manage.py
+├─ requirements.txt
+├─ Dockerfile
+├─ docker-compose.yml
+├─ data/
+│   └─ triage_data.csv.csv
+├─ docs/
+│   └─ triage.pdf
+├─ triage_ai/          # Django project settings
+└─ triage_ml/          # Django app
+    ├─ ml_pipeline/
+    │   ├─ preprocess.py
+    │   ├─ train_model.py
+    │   └─ artifacts/
+    ├─ utils.py
+    ├─ models.py
+    ├─ serializers.py
+    ├─ views.py
+    ├─ urls.py
+    ├─ admin.py
+    ├─ tasks.py
+    ├─ tests/
+    └─ migrations/
+```
 
-   Response (JSON):
-     {
-       "ktas_predicted": 3,
-       "flag": "NEED-RN-REVIEW" | null
-     }
+## Dependencies (`requirements.txt`):
 
-   Business rule (pain guard):
-     • If model predicts ≥4 AND NRS_pain ≥ 7 AND Pain_axis=="central"
-       → override prediction to 3, set flag to "NEED-RN-REVIEW".
+```
+Django==5.0
+djangorestframework==3.15
+drf-yasg==2.2.0
+scikit-learn==1.5
+pandas==2.2
+numpy
+joblib
+scipy
+requests
+```
 
-############################################################
-## SECTION E · Data logging for future retraining
-############################################################
-5. For every API call (every patient/case), **store**:
+## ML Training Pipeline (`train_model.py`):
 
-   - pid (if present)
-   - all model input fields
-   - model's predicted KTAS
-   - KTAS_expert (if present)
-   - is_error (True if KTAS_expert present and prediction ≠ label)
-   - created_at (timestamp)
+* Load data from `data/triage_data.csv.csv`
+* Preprocess data:
 
-   Implement as Django model: `CaseLog`.
-   All records are saved in the project database.
-   These records **must be queryable/exportable for future manual retraining or performance audits**.
+  * Convert `NRS_pain` to categorical (mild, moderate, severe)
+  * Add boolean feature `pain_central_severe`
+* Model training:
 
-   No automated retraining is required at this stage: just accumulate and store all data for potential future use.
+  * `RandomForestClassifier(n_estimators=300, class_weight='balanced_subsample')`
+* Evaluate:
 
-############################################################
-## SECTION F · Metrics
-############################################################
-6. In utils.py, provide:
+  * Print Accuracy, Weighted Kappa, Pearson r
+* Save trained model to `artifacts/model.pkl`
 
-   - compute_kappa(y_true, y_pred)
-   - compute_pearson(y_true, y_pred)
+## API Endpoint:
 
-   (So metrics can be computed later from CaseLog records.)
+Implement the following endpoint using DRF:
 
-############################################################
-## SECTION G · Documentation & Dev UX
-############################################################
-7. Provide `/swagger/` docs via drf-yasg.
-8. Provide Dockerfile and docker-compose.yml (web + DB).
-9. README.md with usage, endpoint documentation, and citation to docs/triage.pdf
-10. Create a documantion for how to use this app for best efficacy and how dev this for future
-11.Generate docs/flutter_roadmap.txt for how to use API and instruction of this app for flutter apps
-12. create a task that make this project better and rise efficaxy of that with total task instruct
-############################################################
-## SECTION H · Testing
-############################################################
-13. Add tests to validate:
-      • train_model.py outputs model.pkl
-      • API returns 200 and valid JSON
-      • utils compute_kappa() > 0 on dummy data
+### `POST /api/triage/predict/`
 
-# END OF SCRIPT
+**Request (JSON):**
+
+```json
+{
+  "pid": "optional patient ID",
+  "Age": 71,
+  "Sex": "Male|Female",
+  "SBP": 160,
+  "DBP": 100,
+  "HR": 84,
+  "RR": 18,
+  "BT": 37.4,
+  "SpO2": 98,
+  "NRS_pain": 8,
+  "Pain_axis": "central|peripheral",
+  "Chief_complain": "patient complaint (text ≤120 chars)",
+  "Arrival_mode": "ambulance/walk-in/etc.",
+  "KTAS_expert": 3
+}
+```
+
+**Response (JSON):**
+
+```json
+{
+  "ktas_predicted": 3,
+  "flag": "NEED-RN-REVIEW"|null
+}
+```
+
+**Business Rule:**
+
+* If predicted KTAS ≥4, `NRS_pain` ≥7, and `Pain_axis` is "central", set `ktas_predicted` to 3 and set flag to "NEED-RN-REVIEW".
+
+## Data Logging (`CaseLog` model):
+
+Store the following after each API call:
+
+* pid (optional)
+* Input features (JSON)
+* Predicted KTAS (`ktas_predicted`)
+* Expert KTAS (`KTAS_expert`, optional)
+* Error indicator (`is_error`: True if prediction differs from expert)
+* Timestamp (`created_at`)
+
+## TalkBot NLP Integration:
+
+Integrate TalkBot API for natural language processing and patient interaction.
+
+### API endpoint:
+
+```
+https://api.talkbot.ir/v1/chat/completions
+```
+
+### Python integration example:
+
+```python
+import json
+import requests
+
+url = 'https://api.talkbot.ir/v1/chat/completions'
+
+headers = {
+  'Content-Type': 'application/json',
+  'Authorization': 'Bearer YOUR_API_KEY'
+}
+
+messages = [
+  {"role": "system", "content": "This is a triage AI assistant."},
+  {"role": "user", "content": "Hello."}
+]
+
+payload = json.dumps({
+  "model": "gpt-4o-mini",
+  "messages": messages,
+  "max-token": 4000,
+  "temperature": 0.3,
+  "stream": False,
+  "top_p": 1.0,
+  "frequency_penalty": 0.0,
+  "presence_penalty": 0.0
+})
+
+response = requests.post(url, headers=headers, data=payload)
+data = response.json()
+
+print(data["choices"][0]["message"]["content"])
+```
+
+### Recommended TalkBot Models:
+
+* gpt-4o-mini (1.5 TPC, 128k tokens)
+* gpt-4-turbo (4 TPC, 128k tokens)
+* gemini-pro (5 TPC, 32k tokens)
+* deepseek-r1-0528 (0.5 TPC, 128k tokens)
+
+Allow conversational patient interaction via TalkBot, using NLP to assist symptom reporting and data collection.
+
+## Testing:
+
+Implement unit tests verifying:
+
+* Successful model training (`model.pkl` created)
+* API endpoint response validity (HTTP 200, correct JSON)
+* Utility functions correctness (`compute_kappa` and `compute_pearson` on synthetic data)
+* TalkBot integration (mock responses)
+
+## Docker Deployment & Documentation:
+
+Provide:
+
+* Dockerfile (python:3.12-slim)
+* docker-compose.yml (web + db services)
+* Swagger documentation (`/swagger/`)
+* README.md:
+
+  * Quick start instructions
+  * API endpoint details
+  * TalkBot integration guide
+  * Reference to `docs/triage.pdf` highlighting pain-related mis-triage errors
+
+## Final Checklist:
+
+Ensure:
+
+* PEP-8 compliance
+* API responses match specifications
+* Proper documentation and clear comments
+* TalkBot integration abstraction (API key from settings/environment variables)
